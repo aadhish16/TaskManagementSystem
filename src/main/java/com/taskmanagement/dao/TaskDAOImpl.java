@@ -2,6 +2,7 @@ package com.taskmanagement.dao;
 
 import com.taskmanagement.database.DatabaseConnection;
 import com.taskmanagement.model.Task;
+import com.taskmanagement.model.User;
 
 import java.sql.Connection;
 import java.sql.Date;
@@ -11,6 +12,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -22,28 +24,27 @@ import java.util.List;
 public class TaskDAOImpl implements TaskDAO {
 
     private static final String SELECT_COLUMNS =
-            "SELECT id, title, description, due_date, priority, status FROM tasks";
-
+            "SELECT t.id, t.title, t.description, t.due_date, t.priority, t.status, "
+                    + "t.assigned_user_id, u.username AS assigned_username "
+                    + "FROM tasks t JOIN users u ON u.id = t.assigned_user_id";
     private static final String INSERT_SQL =
-            "INSERT INTO tasks (title, description, due_date, priority, status) VALUES (?, ?, ?, ?, ?)";
-    private static final String SELECT_ALL_SQL = SELECT_COLUMNS + " ORDER BY id";
-    private static final String SELECT_BY_ID_SQL = SELECT_COLUMNS + " WHERE id = ?";
-    private static final String SEARCH_SQL = SELECT_COLUMNS
-            + " WHERE id = ? OR title LIKE ? OR status LIKE ? OR priority LIKE ? ORDER BY id";
+            "INSERT INTO tasks (title, description, due_date, priority, status, assigned_user_id) "
+                    + "VALUES (?, ?, ?, ?, ?, ?)";
     private static final String UPDATE_SQL =
-            "UPDATE tasks SET title = ?, description = ?, due_date = ?, priority = ?, status = ? WHERE id = ?";
+            "UPDATE tasks SET title = ?, description = ?, due_date = ?, priority = ?, status = ?, "
+                    + "assigned_user_id = ? WHERE id = ?";
+    private static final String UPDATE_STATUS_SQL =
+            "UPDATE tasks SET status = ? WHERE id = ? AND assigned_user_id = ?";
     private static final String DELETE_SQL = "DELETE FROM tasks WHERE id = ?";
-    private static final String COUNT_ALL_SQL = "SELECT COUNT(*) FROM tasks";
-    private static final String COUNT_BY_STATUS_SQL = "SELECT COUNT(*) FROM tasks WHERE status = ?";
 
     @Override
-    public boolean addTask(Task task) throws SQLException {
+    public boolean addTask(Task task, User actor) throws SQLException {
+        requireAdmin(actor);
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(INSERT_SQL, Statement.RETURN_GENERATED_KEYS)) {
-
             setTaskParameters(ps, task);
+            ps.setInt(6, task.getAssignedUserId());
             int rows = ps.executeUpdate();
-
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 if (keys.next()) {
                     task.setId(keys.getInt(1));
@@ -54,58 +55,90 @@ public class TaskDAOImpl implements TaskDAO {
     }
 
     @Override
-    public List<Task> getAllTasks() throws SQLException {
+    public List<Task> getAllTasks(User actor) throws SQLException {
+        requireKnownUser(actor);
+        String sql = SELECT_COLUMNS + (actor.isAdmin() ? "" : " WHERE t.assigned_user_id = ?") + " ORDER BY t.id";
         try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(SELECT_ALL_SQL)) {
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            if (!actor.isAdmin()) {
+                ps.setInt(1, actor.id());
+            }
             return readTasks(ps);
         }
     }
 
     @Override
-    public Task getTaskById(int id) throws SQLException {
+    public Task getTaskById(int id, User actor) throws SQLException {
+        requireKnownUser(actor);
+        String sql = SELECT_COLUMNS + " WHERE t.id = ?" + (actor.isAdmin() ? "" : " AND t.assigned_user_id = ?");
         try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(SELECT_BY_ID_SQL)) {
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, id);
+            if (!actor.isAdmin()) {
+                ps.setInt(2, actor.id());
+            }
             List<Task> tasks = readTasks(ps);
             return tasks.isEmpty() ? null : tasks.get(0);
         }
     }
 
     @Override
-    public List<Task> searchTasks(String keyword) throws SQLException {
+    public List<Task> searchTasks(String keyword, User actor) throws SQLException {
+        requireKnownUser(actor);
         String text = keyword == null ? "" : keyword.trim();
-
-        // If the keyword is a number, also match it against the task id
         int idValue;
         try {
             idValue = Integer.parseInt(text);
         } catch (NumberFormatException e) {
-            idValue = -1; // no task has id -1, so the id condition simply won't match
+            idValue = -1;
         }
 
+        String sql = SELECT_COLUMNS + " WHERE (t.id = ? OR t.title LIKE ? OR t.status LIKE ? OR t.priority LIKE ?)"
+                + (actor.isAdmin() ? "" : " AND t.assigned_user_id = ?") + " ORDER BY t.id";
         String pattern = "%" + text + "%";
         try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(SEARCH_SQL)) {
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, idValue);
             ps.setString(2, pattern);
             ps.setString(3, pattern);
             ps.setString(4, pattern);
+            if (!actor.isAdmin()) {
+                ps.setInt(5, actor.id());
+            }
             return readTasks(ps);
         }
     }
 
     @Override
-    public boolean updateTask(Task task) throws SQLException {
+    public boolean updateTask(Task task, User actor) throws SQLException {
+        requireAdmin(actor);
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(UPDATE_SQL)) {
             setTaskParameters(ps, task);
-            ps.setInt(6, task.getId());
+            ps.setInt(6, task.getAssignedUserId());
+            ps.setInt(7, task.getId());
             return ps.executeUpdate() > 0;
         }
     }
 
     @Override
-    public boolean deleteTask(int id) throws SQLException {
+    public boolean updateTaskStatus(int id, String status, User actor) throws SQLException {
+        requireStudent(actor);
+        if (!Arrays.asList(Task.STATUSES).contains(status)) {
+            throw new SQLException("Invalid task status.");
+        }
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(UPDATE_STATUS_SQL)) {
+            ps.setString(1, status);
+            ps.setInt(2, id);
+            ps.setInt(3, actor.id());
+            return ps.executeUpdate() > 0;
+        }
+    }
+
+    @Override
+    public boolean deleteTask(int id, User actor) throws SQLException {
+        requireAdmin(actor);
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(DELETE_SQL)) {
             ps.setInt(1, id);
@@ -114,52 +147,84 @@ public class TaskDAOImpl implements TaskDAO {
     }
 
     @Override
-    public List<Task> filterTasks(String priority, String status) throws SQLException {
-        // Build the WHERE clause only for the filters that are not "ALL"
+    public List<Task> filterTasks(String priority, String status, User actor) throws SQLException {
+        requireKnownUser(actor);
         StringBuilder sql = new StringBuilder(SELECT_COLUMNS).append(" WHERE 1 = 1");
-        List<String> params = new ArrayList<>();
-
+        List<Object> params = new ArrayList<>();
+        if (!actor.isAdmin()) {
+            sql.append(" AND t.assigned_user_id = ?");
+            params.add(actor.id());
+        }
         if (priority != null && !"ALL".equalsIgnoreCase(priority)) {
-            sql.append(" AND priority = ?");
+            sql.append(" AND t.priority = ?");
             params.add(priority);
         }
         if (status != null && !"ALL".equalsIgnoreCase(status)) {
-            sql.append(" AND status = ?");
+            sql.append(" AND t.status = ?");
             params.add(status);
         }
-        sql.append(" ORDER BY id");
+        sql.append(" ORDER BY t.id");
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql.toString())) {
             for (int i = 0; i < params.size(); i++) {
-                ps.setString(i + 1, params.get(i));
+                Object value = params.get(i);
+                if (value instanceof Integer id) {
+                    ps.setInt(i + 1, id);
+                } else {
+                    ps.setString(i + 1, (String) value);
+                }
             }
             return readTasks(ps);
         }
     }
 
     @Override
-    public int countAllTasks() throws SQLException {
+    public int countAllTasks(User actor) throws SQLException {
+        requireKnownUser(actor);
+        String sql = "SELECT COUNT(*) FROM tasks" + (actor.isAdmin() ? "" : " WHERE assigned_user_id = ?");
         try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(COUNT_ALL_SQL)) {
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            if (!actor.isAdmin()) {
+                ps.setInt(1, actor.id());
+            }
             return readCount(ps);
         }
     }
 
     @Override
-    public int countTasksByStatus(String status) throws SQLException {
+    public int countTasksByStatus(String status, User actor) throws SQLException {
+        requireKnownUser(actor);
+        String sql = "SELECT COUNT(*) FROM tasks WHERE status = ?"
+                + (actor.isAdmin() ? "" : " AND assigned_user_id = ?");
         try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(COUNT_BY_STATUS_SQL)) {
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, status);
+            if (!actor.isAdmin()) {
+                ps.setInt(2, actor.id());
+            }
             return readCount(ps);
         }
     }
 
-    // ---------------------------------------------------------------
-    // Helper methods (avoid repeating the same JDBC code everywhere)
-    // ---------------------------------------------------------------
+    private void requireKnownUser(User actor) throws SQLException {
+        if (actor == null || (!actor.isAdmin() && !actor.isStudent())) {
+            throw new SQLException("Authenticated user role is not supported.");
+        }
+    }
 
-    /** Sets parameters 1-5 (title, description, due_date, priority, status). */
+    private void requireAdmin(User actor) throws SQLException {
+        if (actor == null || !actor.isAdmin()) {
+            throw new SQLException("Only administrators can manage task details.");
+        }
+    }
+
+    private void requireStudent(User actor) throws SQLException {
+        if (actor == null || !actor.isStudent()) {
+            throw new SQLException("Only students can update their task status.");
+        }
+    }
+
     private void setTaskParameters(PreparedStatement ps, Task task) throws SQLException {
         ps.setString(1, task.getTitle());
         ps.setString(2, task.getDescription());
@@ -172,7 +237,6 @@ public class TaskDAOImpl implements TaskDAO {
         ps.setString(5, task.getStatus());
     }
 
-    /** Executes a SELECT and converts every row into a Task object. */
     private List<Task> readTasks(PreparedStatement ps) throws SQLException {
         List<Task> tasks = new ArrayList<>();
         try (ResultSet rs = ps.executeQuery()) {
@@ -183,19 +247,20 @@ public class TaskDAOImpl implements TaskDAO {
         return tasks;
     }
 
-    /** Converts the current ResultSet row into a Task. */
     private Task mapRow(ResultSet rs) throws SQLException {
         Date dueDate = rs.getDate("due_date");
-        return new Task(
+        Task task = new Task(
                 rs.getInt("id"),
                 rs.getString("title"),
                 rs.getString("description"),
                 dueDate == null ? null : dueDate.toLocalDate(),
                 rs.getString("priority"),
                 rs.getString("status"));
+        task.setAssignedUserId(rs.getInt("assigned_user_id"));
+        task.setAssignedUsername(rs.getString("assigned_username"));
+        return task;
     }
 
-    /** Executes a COUNT(*) query and returns the number. */
     private int readCount(PreparedStatement ps) throws SQLException {
         try (ResultSet rs = ps.executeQuery()) {
             return rs.next() ? rs.getInt(1) : 0;

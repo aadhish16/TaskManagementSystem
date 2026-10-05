@@ -18,6 +18,8 @@ public class Task {
     private LocalDate dueDate;
     private String priority;
     private String status;
+    private int assignedUserId;
+    private String assignedUsername;
 
     /** Default constructor. */
     public Task() {
@@ -84,6 +86,22 @@ public class Task {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public int getAssignedUserId() {
+        return assignedUserId;
+    }
+
+    public void setAssignedUserId(int assignedUserId) {
+        this.assignedUserId = assignedUserId;
+    }
+
+    public String getAssignedUsername() {
+        return assignedUsername;
+    }
+
+    public void setAssignedUsername(String assignedUsername) {
+        this.assignedUsername = assignedUsername;
     }
 
     @Override

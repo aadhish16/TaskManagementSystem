@@ -2,6 +2,7 @@ package com.taskmanagement.gui;
 
 import com.taskmanagement.dao.UserDAO;
 import com.taskmanagement.dao.UserDAOImpl;
+import com.taskmanagement.model.User;
 import com.taskmanagement.util.ValidationUtil;
 
 import javax.swing.BorderFactory;
@@ -131,10 +132,10 @@ public class LoginFrame extends JFrame {
         }
 
         try {
-            String role = userDAO.authenticateUser(username, password);
-            if (role != null) {
+            User user = userDAO.authenticateUser(username, password);
+            if (user != null) {
                 dispose();
-                new DashboardFrame(username, role).setVisible(true);
+                new DashboardFrame(user).setVisible(true);
             } else {
                 showError("Invalid username or password.");
                 passwordField.setText("");

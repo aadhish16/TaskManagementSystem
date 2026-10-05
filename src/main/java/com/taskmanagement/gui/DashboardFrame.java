@@ -2,6 +2,8 @@ package com.taskmanagement.gui;
 
 import com.taskmanagement.dao.TaskDAO;
 import com.taskmanagement.dao.TaskDAOImpl;
+import com.taskmanagement.dao.UserDAOImpl;
+import com.taskmanagement.model.User;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -34,21 +36,23 @@ public class DashboardFrame extends JFrame {
     private final SummaryCard completedCard = new SummaryCard("Completed", UIStyle.SUCCESS);
 
     private final TaskPanel taskPanel;
+    private final User currentUser;
 
-    public DashboardFrame(String username, String role) {
+    public DashboardFrame(User currentUser) {
         super("Task Management System - Dashboard");
+        this.currentUser = currentUser;
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         setSize(1300, 780);
         setMinimumSize(new Dimension(1100, 650));
         setLocationRelativeTo(null);
 
         // TaskPanel calls refreshSummary() whenever tasks are added/updated/deleted
-        boolean canManageTasks = "ADMIN".equalsIgnoreCase(role);
-        taskPanel = new TaskPanel(taskDAO, this::refreshSummary, canManageTasks);
+        boolean canManageTasks = currentUser.isAdmin();
+        taskPanel = new TaskPanel(taskDAO, new UserDAOImpl(), currentUser, this::refreshSummary);
 
         JPanel root = new JPanel(new BorderLayout());
         root.setBackground(UIStyle.BACKGROUND);
-        root.add(createHeader(username), BorderLayout.NORTH);
+        root.add(createHeader(currentUser.username()), BorderLayout.NORTH);
         root.add(createSidebar(canManageTasks), BorderLayout.WEST);
         root.add(createCenter(), BorderLayout.CENTER);
         setContentPane(root);
@@ -149,10 +153,10 @@ public class DashboardFrame extends JFrame {
     /** Reloads the numbers shown on the four summary cards. */
     public void refreshSummary() {
         try {
-            totalCard.setValue(String.valueOf(taskDAO.countAllTasks()));
-            pendingCard.setValue(String.valueOf(taskDAO.countTasksByStatus("PENDING")));
-            inProgressCard.setValue(String.valueOf(taskDAO.countTasksByStatus("IN PROGRESS")));
-            completedCard.setValue(String.valueOf(taskDAO.countTasksByStatus("COMPLETED")));
+            totalCard.setValue(String.valueOf(taskDAO.countAllTasks(currentUser)));
+            pendingCard.setValue(String.valueOf(taskDAO.countTasksByStatus("PENDING", currentUser)));
+            inProgressCard.setValue(String.valueOf(taskDAO.countTasksByStatus("IN PROGRESS", currentUser)));
+            completedCard.setValue(String.valueOf(taskDAO.countTasksByStatus("COMPLETED", currentUser)));
         } catch (SQLException ex) {
             // TaskPanel already shows a dialog for database errors; here we just show "--"
             totalCard.setValue("--");

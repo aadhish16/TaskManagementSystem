@@ -10,14 +10,14 @@ It is a college academic project that demonstrates Core Java, OOP, Swing GUI, ev
 ## 1. Features
 
 - **Login screen** with validation (credentials checked against the `users` table)
-- **Role-based access** – administrators manage tasks; students have read-only access
+- **Role-based access** – administrators manage and assign tasks; students manage status on their own assigned tasks
 - **Dashboard** with summary cards: Total, Pending, In Progress, Completed
-- **Add Task** – title, description, due date, priority, status (with validation)
+- **Add Task** – admins set title, description, due date, priority, status and student assignee
 - **View Tasks** – all tasks in a `JTable` with scrolling, sorting and row selection
 - **Select a row** – its data is loaded into the form for editing
 - **Search** – by task ID, title, status or priority (uses `PreparedStatement` + `LIKE`)
-- **Update Task** – edit the selected task and save
-- **Delete Task** – with a *"Are you sure you want to delete this task?"* YES/NO confirmation
+- **Update Task** – admins edit task details; students can change status only on their assigned tasks
+- **Delete Task** – admins delete tasks with a *"Are you sure you want to delete this task?"* YES/NO confirmation
 - **Filter** – by Priority (ALL / LOW / MEDIUM / HIGH) and Status (ALL / PENDING / IN PROGRESS / COMPLETED)
 - **Refresh** and **Logout**
 - Meaningful error messages with `JOptionPane` for every failure
@@ -46,7 +46,7 @@ It is a college academic project that demonstrates Core Java, OOP, Swing GUI, ev
 | Username | Password |
 |---|---|
 | `admin` | `admin123` (full task management) |
-| `student` | `student123` (read-only) |
+| `student` | `student123` (view assigned tasks and update their status) |
 
 ## 5. Database Setup
 
@@ -59,11 +59,17 @@ mysql -u root -p < database.sql
 
 Or open `database.sql` in **MySQL Workbench** and click *Execute* (⚡).
 
-For an existing database, add the role column and mark the administrator once:
+For an existing database, add the role and assignment columns once. This preserves current tasks and assigns unassigned tasks to the seeded student:
 
 ```sql
 ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'STUDENT';
 UPDATE users SET role = 'ADMIN' WHERE username = 'admin';
+ALTER TABLE tasks ADD COLUMN assigned_user_id INT NULL;
+UPDATE tasks SET assigned_user_id = (SELECT id FROM users WHERE username = 'student')
+WHERE assigned_user_id IS NULL;
+ALTER TABLE tasks MODIFY assigned_user_id INT NOT NULL;
+ALTER TABLE tasks ADD CONSTRAINT fk_tasks_assigned_user
+      FOREIGN KEY (assigned_user_id) REFERENCES users(id);
 ```
 
 Do not rerun the setup script on an existing database unless you intend to replace its task and user tables.
@@ -72,7 +78,7 @@ Tables created:
 
 ```sql
 tasks(id INT PK AUTO_INCREMENT, title VARCHAR(100) NOT NULL, description VARCHAR(500),
-      due_date DATE, priority VARCHAR(20), status VARCHAR(20))
+      due_date DATE, priority VARCHAR(20), status VARCHAR(20), assigned_user_id INT FK)
 users(id INT PK AUTO_INCREMENT, username VARCHAR(50) UNIQUE, password VARCHAR(100), role VARCHAR(20))
 ```
 
@@ -119,7 +125,8 @@ TaskManagementSystem/
 │   │   ├── java/com/taskmanagement/
 │   │   │   ├── Main.java                     # Entry point
 │   │   │   ├── model/
-│   │   │   │   └── Task.java                 # Task entity (encapsulation)
+│   │   │   │   ├── Task.java                 # Task entity and assignee
+│   │   │   │   └── User.java                 # Authenticated account and role
 │   │   │   ├── dao/
 │   │   │   │   ├── TaskDAO.java              # DAO interface (abstraction)
 │   │   │   │   ├── TaskDAOImpl.java          # JDBC implementation (all task SQL)

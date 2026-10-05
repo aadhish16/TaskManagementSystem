@@ -1,6 +1,7 @@
 package com.taskmanagement.dao;
 
 import com.taskmanagement.model.Task;
+import com.taskmanagement.model.User;
 
 import java.sql.SQLException;
 import java.util.List;
@@ -13,29 +14,32 @@ import java.util.List;
 public interface TaskDAO {
 
     /** CREATE: inserts a task. Sets the generated id on the task object. */
-    boolean addTask(Task task) throws SQLException;
+    boolean addTask(Task task, User actor) throws SQLException;
 
     /** READ: returns all tasks ordered by id. */
-    List<Task> getAllTasks() throws SQLException;
+    List<Task> getAllTasks(User actor) throws SQLException;
 
     /** READ: returns one task, or null if no task has that id. */
-    Task getTaskById(int id) throws SQLException;
+    Task getTaskById(int id, User actor) throws SQLException;
 
     /** READ: finds tasks whose id, title, status or priority matches the keyword. */
-    List<Task> searchTasks(String keyword) throws SQLException;
+    List<Task> searchTasks(String keyword, User actor) throws SQLException;
 
     /** UPDATE: saves changes to an existing task. Returns false if the task does not exist. */
-    boolean updateTask(Task task) throws SQLException;
+    boolean updateTask(Task task, User actor) throws SQLException;
+
+    /** Students may change status only on tasks assigned to them. */
+    boolean updateTaskStatus(int id, String status, User actor) throws SQLException;
 
     /** DELETE: removes a task. Returns false if the task does not exist. */
-    boolean deleteTask(int id) throws SQLException;
+    boolean deleteTask(int id, User actor) throws SQLException;
 
     /** READ: filters by priority and status. Use "ALL" to skip a filter. */
-    List<Task> filterTasks(String priority, String status) throws SQLException;
+    List<Task> filterTasks(String priority, String status, User actor) throws SQLException;
 
     /** Returns the total number of tasks (for the dashboard cards). */
-    int countAllTasks() throws SQLException;
+    int countAllTasks(User actor) throws SQLException;
 
     /** Returns how many tasks have the given status (for the dashboard cards). */
-    int countTasksByStatus(String status) throws SQLException;
+    int countTasksByStatus(String status, User actor) throws SQLException;
 }

@@ -1,7 +1,9 @@
 package com.taskmanagement.gui;
 
 import com.taskmanagement.dao.TaskDAO;
+import com.taskmanagement.dao.UserDAO;
 import com.taskmanagement.model.Task;
+import com.taskmanagement.model.User;
 import com.taskmanagement.util.ValidationException;
 import com.taskmanagement.util.ValidationUtil;
 
@@ -39,9 +41,13 @@ public class TaskPanel extends JPanel {
 
     private static final String SELECT_OPTION = "-- Select --";
     private static final String ALL_OPTION = "ALL";
-    private static final String[] TABLE_COLUMNS = {"ID", "Title", "Description", "Due Date", "Priority", "Status"};
+        private static final String[] TABLE_COLUMNS = {
+            "ID", "Title", "Description", "Due Date", "Priority", "Status", "Assigned To"
+        };
 
     private final TaskDAO taskDAO;
+        private final UserDAO userDAO;
+        private final User currentUser;
     private final Runnable onDataChanged;
     private final boolean canManageTasks;
 
@@ -51,6 +57,7 @@ public class TaskPanel extends JPanel {
     private final JTextField dueDateField = new JTextField(20);
     private final JComboBox<String> priorityCombo = new JComboBox<>(withFirst(SELECT_OPTION, Task.PRIORITIES));
     private final JComboBox<String> statusCombo = new JComboBox<>(withFirst(SELECT_OPTION, Task.STATUSES));
+    private final JComboBox<User> assignedUserCombo = new JComboBox<>();
     private final JLabel selectedLabel = new JLabel("Selected Task ID: none");
 
     // ----- Search & filter -----
@@ -75,16 +82,19 @@ public class TaskPanel extends JPanel {
     /** Id of the task selected in the table, or -1 when nothing is selected. */
     private int selectedTaskId = -1;
 
-    public TaskPanel(TaskDAO taskDAO, Runnable onDataChanged, boolean canManageTasks) {
+    public TaskPanel(TaskDAO taskDAO, UserDAO userDAO, User currentUser, Runnable onDataChanged) {
         super(new BorderLayout(14, 0));
         this.taskDAO = taskDAO;
+        this.userDAO = userDAO;
+        this.currentUser = currentUser;
         this.onDataChanged = onDataChanged;
-        this.canManageTasks = canManageTasks;
+        this.canManageTasks = currentUser.isAdmin();
         setOpaque(false);
 
         if (canManageTasks) {
-            add(createFormPanel(), BorderLayout.WEST);
+            loadStudents();
         }
+        add(createFormPanel(), BorderLayout.WEST);
         add(createTablePanel(), BorderLayout.CENTER);
 
         loadAllTasks();
@@ -122,29 +132,44 @@ public class TaskPanel extends JPanel {
         descriptionArea.setWrapStyleWord(true);
         descriptionArea.setFont(UIStyle.LABEL_FONT);
         dueDateField.setToolTipText("Format: " + ValidationUtil.DATE_PATTERN + " (e.g. 2026-12-31)");
+        if (!canManageTasks) {
+            titleField.setEditable(false);
+            descriptionArea.setEditable(false);
+            dueDateField.setEditable(false);
+            priorityCombo.setEnabled(false);
+        }
 
         row = addField(form, gbc, row, "Task Title *", titleField);
         row = addField(form, gbc, row, "Description *", new JScrollPane(descriptionArea));
         row = addField(form, gbc, row, "Due Date * (" + ValidationUtil.DATE_PATTERN + ")", dueDateField);
         row = addField(form, gbc, row, "Priority *", priorityCombo);
         row = addField(form, gbc, row, "Status *", statusCombo);
+        if (canManageTasks) {
+            row = addField(form, gbc, row, "Assigned To *", assignedUserCombo);
+        }
 
-        JButton addButton = UIStyle.createButton("Add Task", UIStyle.SUCCESS);
-        JButton updateButton = UIStyle.createButton("Update", UIStyle.WARNING);
-        JButton deleteButton = UIStyle.createButton("Delete", UIStyle.DANGER);
-        JButton clearButton = UIStyle.createButton("Clear", UIStyle.NEUTRAL);
-
-        addButton.addActionListener(e -> addTask());
-        updateButton.addActionListener(e -> updateTask());
-        deleteButton.addActionListener(e -> deleteTask());
-        clearButton.addActionListener(e -> clearForm());
-
-        JPanel buttons = new JPanel(new GridLayout(2, 2, 8, 8));
+        JPanel buttons;
+        if (canManageTasks) {
+            JButton addButton = UIStyle.createButton("Add Task", UIStyle.SUCCESS);
+            JButton updateButton = UIStyle.createButton("Update", UIStyle.WARNING);
+            JButton deleteButton = UIStyle.createButton("Delete", UIStyle.DANGER);
+            JButton clearButton = UIStyle.createButton("Clear", UIStyle.NEUTRAL);
+            addButton.addActionListener(e -> addTask());
+            updateButton.addActionListener(e -> updateTask());
+            deleteButton.addActionListener(e -> deleteTask());
+            clearButton.addActionListener(e -> clearForm());
+            buttons = new JPanel(new GridLayout(2, 2, 8, 8));
+            buttons.add(addButton);
+            buttons.add(updateButton);
+            buttons.add(deleteButton);
+            buttons.add(clearButton);
+        } else {
+            JButton updateStatusButton = UIStyle.createButton("Update Status", UIStyle.PRIMARY);
+            updateStatusButton.addActionListener(e -> updateOwnTaskStatus());
+            buttons = new JPanel(new GridLayout(1, 1, 8, 8));
+            buttons.add(updateStatusButton);
+        }
         buttons.setOpaque(false);
-        buttons.add(addButton);
-        buttons.add(updateButton);
-        buttons.add(deleteButton);
-        buttons.add(clearButton);
 
         gbc.gridy = row++;
         gbc.insets = new Insets(14, 0, 4, 0);
@@ -218,7 +243,7 @@ public class TaskPanel extends JPanel {
         header.setForeground(Color.WHITE);
         header.setReorderingAllowed(false);
 
-        int[] widths = {50, 170, 300, 100, 80, 110};
+        int[] widths = {50, 160, 250, 100, 80, 100, 110};
         for (int i = 0; i < widths.length; i++) {
             taskTable.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
         }
@@ -255,7 +280,13 @@ public class TaskPanel extends JPanel {
         }
         try {
             Task task = readTaskFromForm();
-            if (taskDAO.addTask(task)) {
+            User assignee = (User) assignedUserCombo.getSelectedItem();
+            if (assignee == null) {
+                showWarning("Create a student account before assigning tasks.");
+                return;
+            }
+            task.setAssignedUserId(assignee.id());
+            if (taskDAO.addTask(task, currentUser)) {
                 showInfo("Task added successfully (ID: " + task.getId() + ").");
                 clearForm();
                 loadAllTasks();
@@ -273,7 +304,7 @@ public class TaskPanel extends JPanel {
     /** READ (all) */
     public void loadAllTasks() {
         try {
-            showTasks(taskDAO.getAllTasks());
+            showTasks(taskDAO.getAllTasks(currentUser));
         } catch (SQLException ex) {
             showDatabaseError(ex);
         }
@@ -288,7 +319,7 @@ public class TaskPanel extends JPanel {
             return;
         }
         try {
-            List<Task> results = taskDAO.searchTasks(keyword);
+            List<Task> results = taskDAO.searchTasks(keyword, currentUser);
             showTasks(results);
             if (results.isEmpty()) {
                 showInfo("No tasks found matching \"" + keyword + "\".");
@@ -303,7 +334,7 @@ public class TaskPanel extends JPanel {
         String priority = (String) priorityFilter.getSelectedItem();
         String status = (String) statusFilter.getSelectedItem();
         try {
-            List<Task> results = taskDAO.filterTasks(priority, status);
+            List<Task> results = taskDAO.filterTasks(priority, status, currentUser);
             showTasks(results);
             if (results.isEmpty()) {
                 showInfo("No tasks match the selected filters.");
@@ -325,7 +356,13 @@ public class TaskPanel extends JPanel {
         try {
             Task task = readTaskFromForm();
             task.setId(selectedTaskId);
-            if (taskDAO.updateTask(task)) {
+            User assignee = (User) assignedUserCombo.getSelectedItem();
+            if (assignee == null) {
+                showWarning("Select a student to assign this task to.");
+                return;
+            }
+            task.setAssignedUserId(assignee.id());
+            if (taskDAO.updateTask(task, currentUser)) {
                 showInfo("Task ID " + task.getId() + " updated successfully.");
                 clearForm();
                 loadAllTasks();
@@ -357,7 +394,7 @@ public class TaskPanel extends JPanel {
         }
         try {
             int id = selectedTaskId;
-            if (taskDAO.deleteTask(id)) {
+            if (taskDAO.deleteTask(id, currentUser)) {
                 showInfo("Task ID " + id + " deleted successfully.");
             } else {
                 showError("Task ID " + id + " was not found. It may already be deleted.");
@@ -365,6 +402,28 @@ public class TaskPanel extends JPanel {
             clearForm();
             loadAllTasks();
             onDataChanged.run();
+        } catch (SQLException ex) {
+            showDatabaseError(ex);
+        }
+    }
+
+    private void updateOwnTaskStatus() {
+        if (!isTaskSelected()) {
+            return;
+        }
+        String status = (String) statusCombo.getSelectedItem();
+        if (status == null || SELECT_OPTION.equals(status)) {
+            showWarning("Select a task status first.");
+            return;
+        }
+        try {
+            if (!taskDAO.updateTaskStatus(selectedTaskId, status, currentUser)) {
+                showWarning("This task is no longer assigned to your account.");
+                refresh();
+                return;
+            }
+            showInfo("Task status updated to " + status + ".");
+            refresh();
         } catch (SQLException ex) {
             showDatabaseError(ex);
         }
@@ -397,6 +456,9 @@ public class TaskPanel extends JPanel {
         dueDateField.setText("");
         priorityCombo.setSelectedIndex(0);
         statusCombo.setSelectedIndex(0);
+        if (assignedUserCombo.getItemCount() > 0) {
+            assignedUserCombo.setSelectedIndex(0);
+        }
         selectedLabel.setText("Selected Task ID: none");
     }
 
@@ -416,9 +478,6 @@ public class TaskPanel extends JPanel {
 
     /** Called when the table selection changes. */
     private void loadSelectedTaskIntoForm() {
-        if (!canManageTasks) {
-            return;
-        }
         int viewRow = taskTable.getSelectedRow();
         if (viewRow < 0) {
             return; // selection was cleared
@@ -427,7 +486,7 @@ public class TaskPanel extends JPanel {
         int id = (Integer) tableModel.getValueAt(modelRow, 0);
 
         try {
-            Task task = taskDAO.getTaskById(id);
+            Task task = taskDAO.getTaskById(id, currentUser);
             if (task == null) {
                 showError("Task ID " + id + " no longer exists. The list will be refreshed.");
                 loadAllTasks();
@@ -440,9 +499,32 @@ public class TaskPanel extends JPanel {
             dueDateField.setText(task.getDueDate() == null ? "" : task.getDueDate().toString());
             selectComboValue(priorityCombo, task.getPriority());
             selectComboValue(statusCombo, task.getStatus());
+            if (canManageTasks) {
+                selectAssignee(task.getAssignedUserId());
+            }
         } catch (SQLException ex) {
             showDatabaseError(ex);
         }
+    }
+
+    private void loadStudents() {
+        try {
+            for (User student : userDAO.getStudents()) {
+                assignedUserCombo.addItem(student);
+            }
+        } catch (SQLException ex) {
+            showDatabaseError(ex);
+        }
+    }
+
+    private void selectAssignee(int userId) {
+        for (int i = 0; i < assignedUserCombo.getItemCount(); i++) {
+            if (assignedUserCombo.getItemAt(i).id() == userId) {
+                assignedUserCombo.setSelectedIndex(i);
+                return;
+            }
+        }
+        assignedUserCombo.setSelectedIndex(-1);
     }
 
     /** Selects the value in the combo box, or the "-- Select --" option if it is unknown. */
@@ -470,7 +552,8 @@ public class TaskPanel extends JPanel {
                     task.getDescription(),
                     task.getDueDate() == null ? "" : task.getDueDate().toString(),
                     task.getPriority(),
-                    task.getStatus()
+                    task.getStatus(),
+                    task.getAssignedUsername()
             });
         }
     }
