@@ -131,9 +131,10 @@ public class LoginFrame extends JFrame {
         }
 
         try {
-            if (userDAO.validateUser(username, password)) {
+            String role = userDAO.authenticateUser(username, password);
+            if (role != null) {
                 dispose();
-                new DashboardFrame(username).setVisible(true);
+                new DashboardFrame(username, role).setVisible(true);
             } else {
                 showError("Invalid username or password.");
                 passwordField.setText("");

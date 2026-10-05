@@ -8,9 +8,7 @@ import java.sql.SQLException;
 public interface UserDAO {
 
     /**
-     * Checks whether the username and password match a row in the users table.
-     *
-     * @return true if the credentials are valid
+     * Returns the user's role when the credentials are valid, or null otherwise.
      */
-    boolean validateUser(String username, String password) throws SQLException;
+    String authenticateUser(String username, String password) throws SQLException;
 }

@@ -15,7 +15,8 @@ DROP TABLE IF EXISTS users;
 CREATE TABLE users (
     id       INT PRIMARY KEY AUTO_INCREMENT,
     username VARCHAR(50)  NOT NULL UNIQUE,
-    password VARCHAR(100) NOT NULL
+    password VARCHAR(100) NOT NULL,
+    role     VARCHAR(20)  NOT NULL DEFAULT 'STUDENT'
 );
 
 -- -----------------------------------------------------
@@ -33,9 +34,9 @@ CREATE TABLE tasks (
 -- -----------------------------------------------------
 -- Default login (username: admin, password: admin123)
 -- -----------------------------------------------------
-INSERT INTO users (username, password) VALUES
-    ('admin',   'admin123'),
-    ('student', 'student123');
+INSERT INTO users (username, password, role) VALUES
+    ('admin',   'admin123',   'ADMIN'),
+    ('student', 'student123', 'STUDENT');
 
 -- -----------------------------------------------------
 -- Sample tasks

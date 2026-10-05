@@ -13,16 +13,16 @@ import java.sql.SQLException;
 public class UserDAOImpl implements UserDAO {
 
     private static final String LOGIN_SQL =
-            "SELECT id FROM users WHERE username = ? AND password = ?";
+            "SELECT role FROM users WHERE username = ? AND password = ?";
 
     @Override
-    public boolean validateUser(String username, String password) throws SQLException {
+        public String authenticateUser(String username, String password) throws SQLException {
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(LOGIN_SQL)) {
             ps.setString(1, username);
             ps.setString(2, password);
             try (ResultSet rs = ps.executeQuery()) {
-                return rs.next();
+                return rs.next() ? rs.getString("role") : null;
             }
         }
     }

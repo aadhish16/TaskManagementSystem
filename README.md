@@ -10,6 +10,7 @@ It is a college academic project that demonstrates Core Java, OOP, Swing GUI, ev
 ## 1. Features
 
 - **Login screen** with validation (credentials checked against the `users` table)
+- **Role-based access** – administrators manage tasks; students have read-only access
 - **Dashboard** with summary cards: Total, Pending, In Progress, Completed
 - **Add Task** – title, description, due date, priority, status (with validation)
 - **View Tasks** – all tasks in a `JTable` with scrolling, sorting and row selection
@@ -44,8 +45,8 @@ It is a college academic project that demonstrates Core Java, OOP, Swing GUI, ev
 
 | Username | Password |
 |---|---|
-| `admin` | `admin123` |
-| `student` | `student123` |
+| `admin` | `admin123` (full task management) |
+| `student` | `student123` (read-only) |
 
 ## 5. Database Setup
 
@@ -58,12 +59,21 @@ mysql -u root -p < database.sql
 
 Or open `database.sql` in **MySQL Workbench** and click *Execute* (⚡).
 
+For an existing database, add the role column and mark the administrator once:
+
+```sql
+ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'STUDENT';
+UPDATE users SET role = 'ADMIN' WHERE username = 'admin';
+```
+
+Do not rerun the setup script on an existing database unless you intend to replace its task and user tables.
+
 Tables created:
 
 ```sql
 tasks(id INT PK AUTO_INCREMENT, title VARCHAR(100) NOT NULL, description VARCHAR(500),
       due_date DATE, priority VARCHAR(20), status VARCHAR(20))
-users(id INT PK AUTO_INCREMENT, username VARCHAR(50) UNIQUE, password VARCHAR(100))
+users(id INT PK AUTO_INCREMENT, username VARCHAR(50) UNIQUE, password VARCHAR(100), role VARCHAR(20))
 ```
 
 ## 6. Configure Database Credentials

@@ -35,7 +35,7 @@ public class DashboardFrame extends JFrame {
 
     private final TaskPanel taskPanel;
 
-    public DashboardFrame(String username) {
+    public DashboardFrame(String username, String role) {
         super("Task Management System - Dashboard");
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         setSize(1300, 780);
@@ -43,12 +43,13 @@ public class DashboardFrame extends JFrame {
         setLocationRelativeTo(null);
 
         // TaskPanel calls refreshSummary() whenever tasks are added/updated/deleted
-        taskPanel = new TaskPanel(taskDAO, this::refreshSummary);
+        boolean canManageTasks = "ADMIN".equalsIgnoreCase(role);
+        taskPanel = new TaskPanel(taskDAO, this::refreshSummary, canManageTasks);
 
         JPanel root = new JPanel(new BorderLayout());
         root.setBackground(UIStyle.BACKGROUND);
         root.add(createHeader(username), BorderLayout.NORTH);
-        root.add(createSidebar(), BorderLayout.WEST);
+        root.add(createSidebar(canManageTasks), BorderLayout.WEST);
         root.add(createCenter(), BorderLayout.CENTER);
         setContentPane(root);
 
@@ -81,7 +82,7 @@ public class DashboardFrame extends JFrame {
         return header;
     }
 
-    private JPanel createSidebar() {
+    private JPanel createSidebar(boolean canManageTasks) {
         JButton addButton = UIStyle.createButton("Add Task", UIStyle.SUCCESS);
         JButton viewButton = UIStyle.createButton("View Tasks", UIStyle.PRIMARY);
         JButton searchButton = UIStyle.createButton("Search Task", UIStyle.PRIMARY);
@@ -99,11 +100,15 @@ public class DashboardFrame extends JFrame {
 
         JPanel buttons = new JPanel(new GridLayout(0, 1, 0, 10));
         buttons.setOpaque(false);
-        buttons.add(addButton);
+        if (canManageTasks) {
+            buttons.add(addButton);
+        }
         buttons.add(viewButton);
         buttons.add(searchButton);
-        buttons.add(updateButton);
-        buttons.add(deleteButton);
+        if (canManageTasks) {
+            buttons.add(updateButton);
+            buttons.add(deleteButton);
+        }
         buttons.add(refreshButton);
 
         JLabel menuLabel = new JLabel("MENU");

@@ -43,6 +43,7 @@ public class TaskPanel extends JPanel {
 
     private final TaskDAO taskDAO;
     private final Runnable onDataChanged;
+    private final boolean canManageTasks;
 
     // ----- Form fields -----
     private final JTextField titleField = new JTextField(20);
@@ -74,13 +75,16 @@ public class TaskPanel extends JPanel {
     /** Id of the task selected in the table, or -1 when nothing is selected. */
     private int selectedTaskId = -1;
 
-    public TaskPanel(TaskDAO taskDAO, Runnable onDataChanged) {
+    public TaskPanel(TaskDAO taskDAO, Runnable onDataChanged, boolean canManageTasks) {
         super(new BorderLayout(14, 0));
         this.taskDAO = taskDAO;
         this.onDataChanged = onDataChanged;
+        this.canManageTasks = canManageTasks;
         setOpaque(false);
 
-        add(createFormPanel(), BorderLayout.WEST);
+        if (canManageTasks) {
+            add(createFormPanel(), BorderLayout.WEST);
+        }
         add(createTablePanel(), BorderLayout.CENTER);
 
         loadAllTasks();
@@ -245,6 +249,10 @@ public class TaskPanel extends JPanel {
 
     /** CREATE */
     public void addTask() {
+        if (!canManageTasks) {
+            showWarning("Your account can only view tasks.");
+            return;
+        }
         try {
             Task task = readTaskFromForm();
             if (taskDAO.addTask(task)) {
@@ -307,6 +315,10 @@ public class TaskPanel extends JPanel {
 
     /** UPDATE */
     public void updateTask() {
+        if (!canManageTasks) {
+            showWarning("Your account can only view tasks.");
+            return;
+        }
         if (!isTaskSelected()) {
             return;
         }
@@ -330,6 +342,10 @@ public class TaskPanel extends JPanel {
 
     /** DELETE */
     public void deleteTask() {
+        if (!canManageTasks) {
+            showWarning("Your account can only view tasks.");
+            return;
+        }
         if (!isTaskSelected()) {
             return;
         }
@@ -356,6 +372,9 @@ public class TaskPanel extends JPanel {
 
     /** Clears the form so the user can type a new task. */
     public void prepareNewTask() {
+        if (!canManageTasks) {
+            return;
+        }
         clearForm();
         titleField.requestFocusInWindow();
     }
@@ -397,6 +416,9 @@ public class TaskPanel extends JPanel {
 
     /** Called when the table selection changes. */
     private void loadSelectedTaskIntoForm() {
+        if (!canManageTasks) {
+            return;
+        }
         int viewRow = taskTable.getSelectedRow();
         if (viewRow < 0) {
             return; // selection was cleared
